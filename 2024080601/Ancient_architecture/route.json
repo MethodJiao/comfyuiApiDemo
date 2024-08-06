@@ -1,0 +1,1 @@
+{"输入图片":{"key":"加载图像","route":"inputs,image"},"k采样种子":{"key":"K采样器(效率)","route":"inputs,seed"},"正向关键词":{"key":"Google Translate Text Node Positive","route":"inputs,text"},"反向关键词":{"key":"Google Translate Text Node Negative","route":"inputs,text"},"关键词权重":{"key":"K采样器(效率)","route":"inputs,cfg"},"重绘幅度":{"key":"K采样器(效率)","route":"inputs,denoise"}}
