@@ -9,6 +9,7 @@ import sys
 import requests
 from PIL import Image
 import logging
+from datetime import datetime
 
 timeout_num = 5
 
@@ -57,7 +58,12 @@ def queue_prompt(workflow_json):
         data = json.dumps(p).encode('utf-8')
         req = urllib.request.Request(
             "http://{}/prompt".format(comfyui_server_address), data=data)
-        return json.loads(urllib.request.urlopen(req).read())
+        response = urllib.request.urlopen(req)
+        if response.status == 200:
+            return json.loads(response.read())
+        else:
+            logger.error("queue_prompt状态错误: %s", response.status)
+            return None
     except Exception as e:
         logger.error("queue_prompt发生错误: %s", e)
         return None
@@ -192,6 +198,7 @@ def get_ban_keyword(client_version):
         ban_word_list = json.loads(response.text)
         if not "ban" in ban_word_list:
             return None
+        logger.info("装载敏感词库成功")
         return ban_word_list["ban"]
     except requests.exceptions.RequestException as e:
         if isinstance(e, requests.exceptions.Timeout):
@@ -215,10 +222,12 @@ def upload_queue_and_get_images(ws, workflow_json, output_node_num):
     '''
     try:
         prompt_id = queue_prompt(workflow_json)['prompt_id']
+        logger.info("上传排队成功，prompt_id: %s", prompt_id)
         output_images = {}
         current_node = ""
         while True:
             out = ws.recv()
+            # logger.info(out)
             if isinstance(out, str):
                 message = json.loads(out)
                 if not message['type'] == 'executing':
@@ -227,6 +236,7 @@ def upload_queue_and_get_images(ws, workflow_json, output_node_num):
                 if not data['prompt_id'] == prompt_id:
                     continue
                 if data['node'] is None:
+                    logger.info("运算流程完毕")
                     break  # 流程完毕了
                 else:
                     current_node = data['node']
@@ -236,7 +246,10 @@ def upload_queue_and_get_images(ws, workflow_json, output_node_num):
                 images_output = output_images.get(current_node, [])
                 images_output.append(out[8:])
                 output_images[current_node] = images_output
-
+        if not output_images:
+            logger.info("获取图片失败")
+        else:
+            logger.info("获取图片成功")
         return output_images
     except Exception as e:
         logger.error("upload_queue_and_get_images发生错误: %s", e)
@@ -245,19 +258,26 @@ def upload_queue_and_get_images(ws, workflow_json, output_node_num):
 def upload_image(image_path):
     '''上传图片\n
     image_path: 图片绝对路径\n
-    return: 函数执行状态
+    return: 图片guid
     '''
     try:
-        file_name = os.path.basename(image_path)
+        current_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+
+        file_name, file_extension = os.path.splitext(image_path)
+        guidforimg = client_id +'_'+current_time + file_extension
+        # file_name = os.path.basename(image_path)
         with open(image_path, 'rb') as img_file:
             img_content = img_file.read()
             files = {
-                'image': (file_name, img_content),
+                'image': (guidforimg, img_content),
                 'Content-Type': 'multipart/form-data ',
             }
             response = requests.post(
                 "http://{}/upload/image".format(comfyui_server_address), files=files)
-            return response.status_code
+            if response.status_code == 200:
+                logger.info("上传图片成功")
+                return guidforimg
+            return None
     except requests.exceptions.RequestException as e:
         if isinstance(e, requests.exceptions.Timeout):
             # 处理超时异常的逻辑
@@ -311,6 +331,7 @@ def modify_node_byroute(style_data: StyleData, modify_info):
             for i in range(len(route_value_list)-1):
                 value = value[route_value_list[i]]
             value[route_value_list[-1]] = map_route_modify[search_name]
+        logger.info("应用工作流参数修改成功")
         return True
     except Exception as e:
         logger.error("modify_node_byroute发生错误: %s", e)
@@ -366,6 +387,7 @@ def search_nodenumber_by_classtype(workflow_json, node_classtype):
             value = workflow_json[key]
             if not any(value_ws == node_classtype for value_ws in value.values()):
                 continue
+            logger.info("定位输出节点成功")
             return key
         return -1
     except Exception as e:
@@ -393,7 +415,6 @@ def load_route_bystyle(style_string_dict):
 def init_logger():
     '''初始化日志模块\n
     '''
-    from datetime import datetime
     current_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     os.makedirs(script_path + '/log', exist_ok=True)
 
@@ -417,6 +438,7 @@ def try_ws_get_image(style_data_by_choose):
         ws = websocket.WebSocket()
         ws.connect(
             "ws://{}/ws?clientId={}".format(comfyui_server_address, client_id))
+        logger.info("建立websocket成功")
         output_node_num = search_nodenumber_by_classtype(
             style_data_by_choose.getworkflow(), "SaveImageWebsocket")
         images = upload_queue_and_get_images(
@@ -433,7 +455,7 @@ if __name__ == "__main__":
         # 初始化日志模块
         init_logger()
         logger.info("开始运行")
-        # ！！这里缺功能！！：文件名字需要改一下，ramdom一下再叠加时间戳上传，否则同名文件服务端会用老的，同名文件不会上传更新
+
         picture_name = "1666.png"
 
         # 第一步：获取风格包
@@ -449,14 +471,14 @@ if __name__ == "__main__":
 
         # 第二步：上传图片到服务器
         image_path = script_path+'/' + picture_name
-        status_upload_image = upload_image(image_path)
+        guid_img = upload_image(image_path)
 
-        # ！！这里缺功能！！：选定风格后走第三步，这里假定选了古建风格
-        style_name = "古建风格"
+        # ！！这里缺功能！！：选定风格后走第三步，这里假定选了别墅风格
+        style_name = "别墅风格"
         style_data_by_choose = style_data_dict[style_name]
         # 第三步 选择风格后 修改工作流文件，给该赋值的参数赋值
         modify_info = {}
-        modify_info["输入图片"] = picture_name
+        modify_info["输入图片"] = guid_img #这里一定要赋值upload_image返回来的guid_img
         modify_info["k采样种子"] = random.randint(1, 922431687473039)
         positive_keywords = search_node_byroute(style_data_by_choose, "正向关键词")
         Negative_keywords = search_node_byroute(style_data_by_choose, "反向关键词")
@@ -465,7 +487,7 @@ if __name__ == "__main__":
         # ！！这里缺功能！！：清洗敏感词，需要反馈到ui上
         word = get_ban_keyword("1.0")
 
-        #
+        # 应用修改
         status = modify_node_byroute(style_data_by_choose, modify_info)
 
         # 第四步：通过websocket接口发送jsonapi文件，获取图片
