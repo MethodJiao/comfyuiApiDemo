@@ -448,7 +448,7 @@ def try_ws_get_image(style_data_by_choose):
         logger.error("try_ws_get_image发生错误: %s", e)
 
 
-# ！！整体缺功能！！所有失败及异常需要有处理逻辑并记录日志，以便后续排查和用户侧提示（目前日志埋点过少，不全。在try_get_style函数内演示了一个日志完整示例）
+# ！！整体缺功能！！所有失败及异常需要有处理逻辑并记录日志，以便后续排查问题
 # ！！整体缺功能！！超时机制，重试机制？
 if __name__ == "__main__":
     try:
