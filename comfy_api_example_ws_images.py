@@ -227,8 +227,8 @@ def upload_queue_and_get_images(ws, workflow_json, output_node_num):
         current_node = ""
         while True:
             out = ws.recv()
-            # logger.info(out)
             if isinstance(out, str):
+                logger.info(out)
                 message = json.loads(out)
                 if not message['type'] == 'executing':
                     continue
@@ -243,6 +243,7 @@ def upload_queue_and_get_images(ws, workflow_json, output_node_num):
             else:
                 if not current_node == output_node_num:
                     continue
+                logger.info("命中ws输出节点")
                 images_output = output_images.get(current_node, [])
                 images_output.append(out[8:])
                 output_images[current_node] = images_output
